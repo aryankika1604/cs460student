@@ -81,6 +81,18 @@
             display: none;
         }
 
+        #level {
+            position: absolute;
+            top: 148px;
+            left: 655px;
+        }
+
+        #level_name {
+            position: absolute;
+            top: 148px;
+            left: 585px;
+        }
+
         #start_msg {
             position: absolute;
             top: 430px;
@@ -91,6 +103,19 @@
             font-weight: bolder;
             white-space: nowrap;
             pointer-events: none;
+        }
+
+        #combo_msg {
+            position: absolute;
+            top: 475px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgb(0, 255, 0);
+            font-size: 24px;
+            font-weight: bolder;
+            white-space: nowrap;
+            pointer-events: none;
+            display: none;
         }
     </style>
 
@@ -175,8 +200,11 @@
 
             STOPPED = false;
             GAMESTARTED = false; // PRESS ENTER TO START
-            BALLSPEED = 0.02; // BALL SPEED
-            PADDLESCALE = 1.3; // PADDLE SIZE
+            BALLSPEED = 0.010; // BALL SPEED
+            PADDLESCALE = 1.4; // PADDLE SIZE
+            LEVEL = 1; // LEVEL
+            COMBO = 0; // COMBO
+            PAUSED = false; // PAUSE
 
             OBJECTS = [];
             OBJECTS.push(createPaddle([1, 1, 1, 1], [0, -0.9, 0])); // BOTTOM PADDLE
@@ -251,7 +279,7 @@
             return [v_buffer, i_buffer, color, offset, 1, gl.POINTS];
         }
 
-        function createBrick(color, offset, score) {
+        function createBrick(color, offset, score, is_power) {
             //************************************************************//
             //
             // CREATE GEOMETRY
@@ -292,7 +320,7 @@
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null); // unbind
 
             // Part 2
-            return [v_buffer, i_buffer, color, offset, 6, gl.TRIANGLES, score];
+            return [v_buffer, i_buffer, color, offset, 6, gl.TRIANGLES, score, is_power];
         }
 
         function createBricks() {
@@ -307,9 +335,20 @@
                 [0.0, 0.5, 1.0, 1.0], // blue
                 [0.6, 0.2, 1.0, 1.0], // purple
             ]
+            // POWER BRICK
+            var special_row = Math.floor(Math.random() * 6);
+            var special_col = Math.floor(Math.random() * 9);
+
             for (let i = 0; i < 6; i++) {
                 for (let j = 0; j < 9; j++) {
-                    OBJECTS.push(createBrick(color[i], [offset_x, offset_y, 0], 6 - i))
+                    var brick_color = color[i];
+                    var brick_score = 6 - i;
+                    var is_power = (i == special_row && j == special_col);
+                    if (is_power) {
+                        brick_color = [1.0, 0.1, 0.8, 1.0]; // POWER BRICK
+                        brick_score = 15;
+                    }
+                    OBJECTS.push(createBrick(brick_color, [offset_x, offset_y, 0], brick_score, is_power))
                     offset_x += 0.2
                 }
                 offset_x = -0.8
@@ -329,7 +368,7 @@
             gl.clear(gl.COLOR_BUFFER_BIT);
 
             // Part 4 - update ball
-            if (GAMESTARTED) {
+            if (GAMESTARTED && !PAUSED) {
                 updateBall();
             }
 
@@ -388,12 +427,24 @@
             }
         }
 
+        // COMBO
+        function updateComboDisplay() {
+            var el = document.getElementById("combo_msg");
+            if (COMBO >= 2) {
+                el.innerText = "COMBO x" + COMBO;
+                el.style.display = "block";
+            } else {
+                el.style.display = "none";
+            }
+        }
+
         // SOUND
         function playSound(id) {
             var sound = document.getElementById(id);
             sound.currentTime = 0;
             sound.play();
         }
+
         //Moves the ball back near the center of the screen and gives it a new random direction. 
         //It changes the ball’s X and Y offsets to small random values and then sets BALLDIRECTION to a random negative angle so the ball starts moving downward again.
         function resetBall() {
@@ -403,6 +454,7 @@
             BALLDIRECTION = Math.PI / 8 + Math.random();
             BALLDIRECTION *= -1;
         }
+
         // Reads the current score, adds the value of the brick that was hit, and updates the score on the screen. 
         // If only the paddle and ball are left in OBJECTS, that means all the bricks were destroyed, so it calls createBricks() to create a new set.
         function score(score_value) {
@@ -411,21 +463,50 @@
             if (OBJECTS.length == 2) { //IF ALL BLRICKS DESTROYED CREATE MORE
                 // SOUND
                 playSound("level_sound");
+
+                // LEVEL
+                LEVEL += 1;
+                document.getElementById("level").innerText = LEVEL;
+
+                BALLSPEED = 0.010 + (LEVEL - 1) * 0.003;
+                if (BALLSPEED > 0.040) {
+                    BALLSPEED = 0.040;
+                }
+
+                COMBO = 0;
+                updateComboDisplay();
+
                 createBricks();
+                resetBall();
+
+                GAMESTARTED = false;
+
+                var startMsg = document.getElementById("start_msg");
+                startMsg.innerText = "LEVEL " + LEVEL + " - PRESS ENTER";
+                startMsg.style.display = "block";
             }
         }
+
         // Decreases the number of lives by 1. 
         // If the player was on their last life, it sets STOPPED to true and displays the game-over overlay and image.
         function loseLife() {
             var old_life = document.getElementById("lives").innerText;
             document.getElementById("lives").innerText = parseInt(old_life) - 1;
+
             // PADDLE SIZE - grow paddle on life lost
             PADDLESCALE += 0.15;
-            if (PADDLESCALE > 1.3) PADDLESCALE = 1.3;
+            if (PADDLESCALE > 1.4) PADDLESCALE = 1.4;
+
+            // COMBO
+            COMBO = 0;
+            updateComboDisplay();
+
             if (old_life == 1) {
                 STOPPED = true;
                 document.getElementById("overlay").style.display = "block";
                 document.getElementById("game_over").style.display = "block";
+                document.getElementById("start_msg").style.display = "none";
+
                 // SOUND
                 playSound("gameover_sound");
             } else {
@@ -445,35 +526,63 @@
             if (BALL_X >= 0.95) {
                 // RIGHT WALL
                 BALLDIRECTION = Math.PI - BALLDIRECTION;
+
                 // SOUND
                 playSound("wall_sound");
+
             } else if (BALL_X <= -0.95) {
                 // LEFT WALL
                 BALLDIRECTION = Math.PI - BALLDIRECTION;
+
                 // SOUND
                 playSound("wall_sound");
+
             } else if (BALL_Y >= 0.96) {
                 // TOP WALL
-                BALLDIRECTION = - BALLDIRECTION;
+                BALLDIRECTION = -BALLDIRECTION;
+
                 // SOUND
                 playSound("wall_sound");
+
             } else if (BALL_Y >= 0.2) {
                 // TOP BRICKS
                 for (let i = 2; i < OBJECTS.length; i++) {
                     BRICK_OFFSET_X = OBJECTS[i][3][0];
                     BRICK_OFFSET_Y = OBJECTS[i][3][1];
+
                     if (BALL_X > BRICK_OFFSET_X - 0.095 &&
                         BALL_X < BRICK_OFFSET_X + 0.095 &&
                         BALL_Y > BRICK_OFFSET_Y - 0.05 &&
                         BALL_Y < BRICK_OFFSET_Y + 0.05) {
-                        BALLDIRECTION = - BALLDIRECTION;
+
+                        BALLDIRECTION = -BALLDIRECTION;
+
                         score_num = OBJECTS[i][6];
+                        var is_power = OBJECTS[i][7];
+
                         OBJECTS.splice(i, 1);
+
                         // SOUND
                         playSound("brick_sound");
-                        score(score_num);
+
+                        // POWER BRICK
+                        if (is_power) {
+                            PADDLESCALE += 0.2;
+                            if (PADDLESCALE > 1.4) PADDLESCALE = 1.4;
+                        }
+
+                        // COMBO
+                        COMBO += 1;
+                        if (COMBO > 5) COMBO = 5;
+
+                        updateComboDisplay();
+
+                        score(score_num * COMBO);
+
+                        if (!GAMESTARTED) return;
                     }
                 }
+
             } else if (BALL_Y <= -0.85) {
                 // BOTTOM 
 
@@ -484,14 +593,34 @@
                 if (BALL_X >= BOTTOM_PADDLE_LEFT && BALL_X <= BOTTOM_PADDLE_RIGHT) {
                     // YES, REFLECT
                     BALLDIRECTION = -BALLDIRECTION;
+
                     // SOUND
                     playSound("paddle_sound");
+
+                    // COMBO
+                    COMBO = 0;
+                    updateComboDisplay();
+
                     //UPDATE STEP ON BOUNCE TO INCREASE SPEED
-                    BALLSPEED += 0.002;
-                    if (BALLSPEED > 0.05) BALLSPEED = 0.05;
+                    var speedIncrease = 0.00025 + (LEVEL - 1) * 0.00015;
+                    BALLSPEED += speedIncrease;
+                    if (BALLSPEED > 0.040) {
+                        BALLSPEED = 0.040;
+                    }
+
                     // PADDLE SIZE - shrink paddle on hit
-                    PADDLESCALE -= 0.05;
-                    if (PADDLESCALE < 0.6) PADDLESCALE = 0.6;
+                    if (LEVEL == 1) {
+                        PADDLESCALE -= 0.01;
+                    } else if (LEVEL == 2) {
+                        PADDLESCALE -= 0.02;
+                    } else {
+                        PADDLESCALE -= 0.03;
+                    }
+
+                    if (PADDLESCALE < 0.7) {
+                        PADDLESCALE = 0.7;
+                    }
+
                 } else {
                     // LOSE LIFE
                     loseLife();
@@ -510,38 +639,75 @@
                 // restart the game
                 window.location.reload();
             }
+
+            // PAUSE
+            if ((e.key == "p" || e.key == "P") && GAMESTARTED && !STOPPED) {
+                PAUSED = !PAUSED;
+
+                var startMsg = document.getElementById("start_msg");
+
+                if (PAUSED) {
+                    startMsg.innerText = "PAUSED - PRESS P TO RESUME";
+                    startMsg.style.display = "block";
+                } else {
+                    startMsg.style.display = "none";
+                }
+
+                return;
+            }
+
+            if (PAUSED) {
+                return;
+            }
+
             // PRESS ENTER TO START
             if (e.key == "Enter" && !GAMESTARTED) {
                 GAMESTARTED = true;
                 document.getElementById("start_msg").style.display = "none";
             }
+
             // Part 3 - move paddle
             if (e.key == "ArrowLeft") {
                 OBJECTS[0][3][0] -= 0.1;
             } else if (e.key == "ArrowRight") {
                 OBJECTS[0][3][0] += 0.1;
             }
+
             // keep paddle in view
             var paddleHalfWidth = 0.1 * PADDLESCALE;
             var paddleLimit = 1.0 - paddleHalfWidth;
-            if (OBJECTS[0][3][0] < -paddleLimit) OBJECTS[0][3][0] = -paddleLimit;
-            if (OBJECTS[0][3][0] > paddleLimit) OBJECTS[0][3][0] = paddleLimit;
+
+            if (OBJECTS[0][3][0] < -paddleLimit) {
+                OBJECTS[0][3][0] = -paddleLimit;
+            }
+
+            if (OBJECTS[0][3][0] > paddleLimit) {
+                OBJECTS[0][3][0] = paddleLimit;
+            }
         };
     </script>
 </head>
 
 <body>
     <div id="gameboy">
+
         <span id="score_name" class="top_bar">SCORE:</span>
         <span id="score" class="top_bar">0</span>
 
+        <span id="level_name" class="top_bar">LVL:</span>
+        <span id="level" class="top_bar">1</span>
+
         <span id="lives_name" class="top_bar">LIVES:</span>
         <span id="lives" class="top_bar">3</span>
+
         <div id="overlay">
             <img id="game_over" class="result" src="https://cs460.org/assignments/breakout/game_over.jpg" />
         </div>
+
         <canvas id="c"></canvas>
+
         <span id="start_msg">PRESS ENTER TO START</span>
+        <span id="combo_msg">COMBO x2</span>
 
     </div>
 
@@ -551,6 +717,7 @@
     <audio id="life_sound" src="sounds/life-lost.mp3"></audio>
     <audio id="level_sound" src="sounds/level-complete.mp3"></audio>
     <audio id="gameover_sound" src="sounds/game-over.mp3"></audio>
+
 </body>
 
 </html>
