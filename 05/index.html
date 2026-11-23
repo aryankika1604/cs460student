@@ -1,0 +1,279 @@
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: black;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+    </style>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script src="https://mrdoob.github.io/stats.js/build/stats.min.js"></script>
+</head>
+
+<body>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { AnaglyphEffect } from 'three/addons/effects/AnaglyphEffect.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { VertexNormalsHelper } from 'three/addons/helpers/VertexNormalsHelper.js';
+    import { Pane } from 'https://cdn.jsdelivr.net/npm/tweakpane@4.0.5/dist/tweakpane.min.js';
+
+    var scene;
+    var camera;
+    var renderer;
+    var controls;
+    var effect;
+    var stats;
+    var light;
+    var ambient;
+
+    // 180 degree rotation around Y, and the identity quaternion
+    var q180 = new THREE.Quaternion();
+    q180.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+
+    var qIdentity = new THREE.Quaternion();
+    qIdentity.x = 0;
+    qIdentity.y = 0;
+    qIdentity.z = 0;
+    qIdentity.w = 1;
+
+    //
+    // SETTINGS and HELPER for TWEAKPANE
+    //
+    window['SCENE'] = {
+        'anaglyph': false,
+        'poly': null,
+        'rotate_poly': false,
+        'do_rotate_poly': function() {
+            window['SCENE']['rotate_poly'] = !window['SCENE']['rotate_poly'];
+        },
+        'blender': null,
+        'rotate_blender': false,
+        'do_rotate_blender': function() {
+            window['SCENE']['rotate_blender'] = !window['SCENE']['rotate_blender'];
+        },
+        'blender_helper': null,
+        'blender_old_material': null,
+        'change_material': function() {
+
+            if (!window['SCENE']['blender_old_material']) {
+
+                window['SCENE']['blender_old_material'] = window['SCENE']['blender'].material.clone();
+
+                window['SCENE']['blender'].material = new THREE.MeshNormalMaterial();
+
+            } else {
+
+                window['SCENE']['blender'].material = window['SCENE']['blender_old_material'].clone();
+
+                window['SCENE']['blender_old_material'] = null;
+
+            }
+
+        }
+    };
+
+    window.onload = function () {
+
+        scene = new THREE.Scene();
+
+        camera = new THREE.PerspectiveCamera(
+            75,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            10000
+        );
+
+        camera.position.set(0, 1.4, 3.2);
+        // makes the anaglyph separation readable at this scene scale
+        camera.focus = 3;
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        controls = new OrbitControls(camera, renderer.domElement);
+
+        effect = new AnaglyphEffect(renderer);
+        effect.setSize(window.innerWidth, window.innerHeight);
+
+        // one directional light and one ambient light
+        light = new THREE.DirectionalLight(0xffffff, 2);
+        light.position.set(5, 10, 7);
+        scene.add(light);
+
+        ambient = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambient);
+
+        // stats.js widget
+        stats = new Stats();
+        document.body.appendChild(stats.domElement);
+
+        var pane = new Pane();
+        var sceneui = pane.addFolder({title: 'Scene'});
+        var polyui = pane.addFolder({title: 'PolyCam Mesh'});
+        var blenderui = pane.addFolder({title: 'Blender Mesh'});
+
+        sceneui.addBinding(window.SCENE, 'anaglyph');
+        sceneui.addBinding(light.position, 'x', {min: -100, max: 100, label: 'Light X'});
+        sceneui.addBinding(light.position, 'y', {min: -100, max: 100, label: 'Light Y'});
+        sceneui.addBinding(light.position, 'z', {min: -100, max: 100, label: 'Light Z'});
+        sceneui.addBinding(light, 'intensity', {min: 0, max: 10, label: 'Intensity'});
+        sceneui.addBinding(ambient, 'color', {label: 'AmbientLight Color', color: {type: 'float'}});
+
+        var loader = new GLTFLoader();
+
+        loader.load('poly.glb', function (gltf) {
+
+            var poly = gltf.scenes[0].children[0];
+
+            window.SCENE.poly = poly;
+
+            scene.add(poly);
+
+            poly.scale.x = 10;
+            poly.scale.y = 10;
+            poly.scale.z = 10;
+
+            // identity quaternion
+            poly.quaternion.x = 0;
+            poly.quaternion.y = 0;
+            poly.quaternion.z = 0;
+            poly.quaternion.w = 1;
+
+            // put the original scan on the left
+            poly.translateX(-1.5);
+
+            polyui.addBinding(window.SCENE.poly.material, 'wireframe');
+            polyui.addButton({title: 'rotate!'}).on('click', () => {
+                window.SCENE.do_rotate_poly();
+            });
+
+        });
+
+        var loader2 = new GLTFLoader();
+
+        loader2.load('edited.glb', function (gltf) {
+
+            var blender = gltf.scenes[0].children[0];
+
+            window.SCENE.blender = blender;
+
+            scene.add(blender);
+
+            blender.scale.x = 10;
+            blender.scale.y = 10;
+            blender.scale.z = 10;
+
+            // identity quaternion
+            blender.quaternion.x = 0;
+            blender.quaternion.y = 0;
+            blender.quaternion.z = 0;
+            blender.quaternion.w = 1;
+
+            // put the edited model on the right
+            blender.translateX(1.2);
+
+            var helper = new VertexNormalsHelper(blender, 0.1, 'blue');
+            helper.visible = false;
+            scene.add(helper);
+            window.SCENE.blender_helper = helper;
+
+            blenderui.addBinding(helper, 'visible', {label: 'Show normals!'});
+            blenderui.addButton({title: 'Change Material!'}).on('click', () => {
+                window.SCENE.change_material();
+            });
+            blenderui.addButton({title: 'rotate!'}).on('click', () => {
+                window.SCENE.do_rotate_blender();
+            });
+
+        });
+
+        animate();
+    };
+
+    function animate() {
+        requestAnimationFrame(animate);
+
+        if (window.SCENE.poly) {
+
+            if (window.SCENE.rotate_poly) {
+
+                // slerp toward a 180 degree rotation
+                window.SCENE.poly.quaternion.slerp(q180, 0.01);
+
+            } else {
+
+                // slerp back toward the identity quaternion
+                window.SCENE.poly.quaternion.slerp(qIdentity, 0.01);
+
+            }
+
+        }
+
+        if (window.SCENE.blender) {
+
+            if (window.SCENE.rotate_blender) {
+
+                window.SCENE.blender.quaternion.slerp(q180, 0.01);
+
+            } else {
+
+                window.SCENE.blender.quaternion.slerp(qIdentity, 0.01);
+
+            }
+
+            // keep the normal helper lined up while the mesh rotates
+            if (window.SCENE.blender_helper) {
+                window.SCENE.blender_helper.update();
+            }
+
+        }
+
+        controls.update();
+
+        if (window.SCENE.anaglyph) {
+            effect.render(scene, camera);
+        } else {
+            renderer.render(scene, camera);
+        }
+
+        stats.update();
+    }
+
+    window.addEventListener('resize', function () {
+
+        if (!camera) {
+            return;
+        }
+
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        effect.setSize(window.innerWidth, window.innerHeight);
+
+    });
+</script>
+
+</body>
+</html>
